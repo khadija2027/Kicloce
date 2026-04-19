@@ -103,7 +103,7 @@ const LoginPage = () => {
     return (
       <div className="auth-container">
         <div className="auth-s">
-          <div className="auth-logo-s">Ton<span>tine+</span></div>
+        <img src="/logo.png" alt="Tontine+" className="h-16 w-auto mx-auto mb-4" />
           <div className="auth-tag-s">Vérification OTP</div>
           <form onSubmit={handleOtpSubmit}>
             <div className="fg">
@@ -126,7 +126,7 @@ const LoginPage = () => {
   return (
     <div className="auth-container">
       <div className="auth-s">
-        <div className="auth-logo-s">Ton<span>tine+</span></div>
+        <img src="/logo.png" alt="Tontine+" className="h-16 w-auto mx-auto mb-4" />
         <div className="auth-tag-s">Votre cercle d'épargne solidaire digital</div>
         <div className="auth-tabs-s">
           <button className={`auth-tab-s ${isLogin ? 'act' : ''}`} onClick={() => setIsLogin(true)}>Connexion</button>

@@ -18,8 +18,7 @@ export default function TopBar({ showNotif = false, avatar = 'FA' }) {
       borderBottom: `1px solid ${colors.gray200}`,
       flexShrink: 0,
     },
-    logo: { fontSize: 13, fontWeight: 700, color: colors.primary },
-    logoSpan: { color: colors.dark },
+    logo: { height: 32, display: 'flex', alignItems: 'center' },
     right: { display: 'flex', gap: 6, alignItems: 'center' },
     iconBtn: {
       width: 24, height: 24, borderRadius: '50%',
@@ -37,7 +36,7 @@ export default function TopBar({ showNotif = false, avatar = 'FA' }) {
 
   return (
     <div style={s.bar}>
-      <div style={s.logo}>Ton<span style={s.logoSpan}>tine+</span></div>
+      <img src="/logo.png" alt="Tontine+" style={s.logo} />
       <div style={s.right}>
         {showNotif && (
           <div style={{ ...s.iconBtn, cursor: 'pointer' }} onClick={() => navigate('/notifications')}>

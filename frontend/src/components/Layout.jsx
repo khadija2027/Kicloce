@@ -50,7 +50,7 @@ const TopBar = () => {
   
   return (
     <div className="tb">
-      <div className="tb-logo">Ton<span>tine+</span></div>
+      <img src="/logo.png" alt="Tontine+" className="h-8 w-auto" />
       <div className="tb-right">
         <div className="tb-icon">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2">
