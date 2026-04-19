@@ -419,6 +419,20 @@ export default function DashboardPage() {
   const [simulationData, setSimulationData] = useState(null);
   const [depositLoading, setDepositLoading] = useState(false);
   const [depositError, setDepositError] = useState(null);
+
+  // 💳 Stat for Retrait (Wallet Withdrawal)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawStep, setWithdrawStep] = useState('form'); // 'form' | 'otp' | 'confirmation' | 'success'
+  const [withdrawFormData, setWithdrawFormData] = useState({
+    contractId: authUser?.contractId || 'LAN230325007133701',
+    level: '2',
+    phoneNumber: authUser?.phoneNumber || '212700446631',
+    amount: '',
+  });
+  const [withdrawSimulationData, setWithdrawSimulationData] = useState(null);
+  const [withdrawOtp, setWithdrawOtp] = useState('');
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [withdrawError, setWithdrawError] = useState(null);
   
   const [tontines, setTontines] = useState(() => {
     // Charger les tontines créées et rejointes depuis localStorage
@@ -675,6 +689,120 @@ export default function DashboardPage() {
     }
   };
 
+  // 💳 Fonctions pour le retrait wallet (Cash OUT)
+  const handleWithdrawSimulation = async () => {
+    try {
+      setWithdrawLoading(true);
+      setWithdrawError(null);
+      
+      const response = await fetch('/api/wallet/cash/out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...withdrawFormData,
+          step: 'simulation'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Simulation failed');
+      }
+
+      console.log('✅ Withdrawal simulation successful:', data);
+      setWithdrawSimulationData(data.result);
+      setWithdrawStep('otp');
+    } catch (error) {
+      console.error('❌ Withdrawal simulation error:', error);
+      setWithdrawError(error.message);
+    } finally {
+      setWithdrawLoading(false);
+    }
+  };
+
+  const handleWithdrawOtpGeneration = async () => {
+    try {
+      setWithdrawLoading(true);
+      setWithdrawError(null);
+
+      const response = await fetch('/api/wallet/cash/out/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumber: withdrawFormData.phoneNumber
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'OTP generation failed');
+      }
+
+      console.log('✅ OTP generated (demo mode):', data);
+      // In demo mode, we receive the OTP. In production, it would be sent via SMS
+      setWithdrawStep('confirmation');
+    } catch (error) {
+      console.error('❌ OTP generation error:', error);
+      setWithdrawError(error.message);
+    } finally {
+      setWithdrawLoading(false);
+    }
+  };
+
+  const handleWithdrawConfirmation = async () => {
+    try {
+      setWithdrawLoading(true);
+      setWithdrawError(null);
+
+      if (!withdrawOtp || withdrawOtp.length !== 6) {
+        throw new Error('OTP must be 6 digits');
+      }
+
+      const response = await fetch('/api/wallet/cash/out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: withdrawSimulationData.token,
+          amount: withdrawFormData.amount,
+          otp: withdrawOtp,
+          step: 'confirmation'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Confirmation failed');
+      }
+
+      console.log('✅ Withdrawal confirmation successful:', data);
+      
+      // 🔄 Mettre à jour le wallet dans le store (décrémenter cette fois)
+      const { updateWalletBalance } = useAuthStore.getState();
+      updateWalletBalance(-parseFloat(withdrawFormData.amount));
+      
+      console.log(`💰 Wallet updated: -${withdrawFormData.amount} MAD`);
+      
+      setWithdrawStep('success');
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setShowWithdrawModal(false);
+        setWithdrawStep('form');
+        setWithdrawSimulationData(null);
+        setWithdrawOtp('');
+        setWithdrawFormData({ ...withdrawFormData, amount: '' });
+      }, 2000);
+    } catch (error) {
+      console.error('❌ Withdrawal confirmation error:', error);
+      setWithdrawError(error.message);
+    } finally {
+      setWithdrawLoading(false);
+    }
+  };
+
   // Styles pour le modal de confirmation de suppression
   const deleteConfirmStyles = {
     overlay: {
@@ -732,7 +860,7 @@ export default function DashboardPage() {
         <WalletCard 
           user={authUser}
           onDeposit={() => setShowDepositModal(true)}
-          onWithdraw={() => alert('Retrait en développement...')}
+          onWithdraw={() => setShowWithdrawModal(true)}
           onTransfer={() => alert('Transfert en développement...')}
         />
         <KpiGrid kpiData={kpiData} />
@@ -915,6 +1043,188 @@ export default function DashboardPage() {
                 <div style={deleteConfirmStyles.successText}>Dépôt réussi!</div>
                 <div style={deleteConfirmStyles.successSubtext}>
                   {depositFormData.amount} MAD ont été ajoutés à votre wallet
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 💳 Modal de Retrait (Cash OUT) */}
+      {showWithdrawModal && (
+        <div style={deleteConfirmStyles.overlay} onClick={() => !withdrawLoading && setShowWithdrawModal(false)}>
+          <div style={{ ...deleteConfirmStyles.modal, maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+            {withdrawStep === 'form' && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>💸 Retirer du wallet</div>
+                
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.primaryBg, borderRadius: 6 }}>
+                  ⚠️ Simulation: Vérification du montant et des frais. OTP: Vous recevrez un code. Confirmation: Approuvez avec l'OTP.
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>Montant (MAD)</label>
+                  <input 
+                    type="number" 
+                    value={withdrawFormData.amount} 
+                    onChange={(e) => setWithdrawFormData({ ...withdrawFormData, amount: e.target.value })}
+                    placeholder="Ex: 500"
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>N° Téléphone</label>
+                  <input 
+                    type="text" 
+                    value={withdrawFormData.phoneNumber} 
+                    onChange={(e) => setWithdrawFormData({ ...withdrawFormData, phoneNumber: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>ID Contrat</label>
+                  <input 
+                    type="text" 
+                    value={withdrawFormData.contractId} 
+                    onChange={(e) => setWithdrawFormData({ ...withdrawFormData, contractId: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                {withdrawError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {withdrawError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setShowWithdrawModal(false)} disabled={withdrawLoading}>
+                    Annuler
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: withdrawLoading ? 0.6 : 1 }} 
+                    onClick={handleWithdrawSimulation}
+                    disabled={!withdrawFormData.amount || withdrawLoading}
+                  >
+                    {withdrawLoading ? '⏳ Simulation...' : '→ Simuler'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {withdrawStep === 'otp' && withdrawSimulationData && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>📱 Génération OTP</div>
+                
+                <div style={{ background: colors.gray50, padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 9 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant à retirer:</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{withdrawFormData.amount} MAD</div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Frais:</div>
+                    <div style={{ fontWeight: 600 }}>{withdrawSimulationData.Fees || '0'} MAD</div>
+                  </div>
+                  <div style={{ borderTop: `1px solid ${colors.gray300}`, paddingTop: 8, marginTop: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant net reçu:</div>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: colors.primary }}>{parseFloat(withdrawFormData.amount) - parseFloat(withdrawSimulationData.Fees || 0)} MAD</div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.successBg, borderRadius: 6, textAlign: 'center' }}>
+                  ✓ Un code OTP a été envoyé à {withdrawFormData.phoneNumber}
+                </div>
+
+                {withdrawError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {withdrawError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setWithdrawStep('form')} disabled={withdrawLoading}>
+                    ← Retour
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: withdrawLoading ? 0.6 : 1 }} 
+                    onClick={handleWithdrawOtpGeneration}
+                    disabled={withdrawLoading}
+                  >
+                    {withdrawLoading ? '⏳ Génération...' : '→ J\'ai l\'OTP'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {withdrawStep === 'confirmation' && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>🔐 Confirmer avec OTP</div>
+                
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.primaryBg, borderRadius: 6 }}>
+                  ⚠️ Entrez le code OTP à 6 chiffres reçu par SMS
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>Code OTP (6 chiffres)</label>
+                  <input 
+                    type="text" 
+                    value={withdrawOtp} 
+                    onChange={(e) => setWithdrawOtp(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    maxLength="6"
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px', 
+                      border: `1px solid ${colors.gray300}`, 
+                      borderRadius: 6, 
+                      fontSize: 14,
+                      fontWeight: 600,
+                      letterSpacing: '4px',
+                      textAlign: 'center',
+                    }}
+                  />
+                </div>
+
+                <div style={{ background: colors.gray50, padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 9 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant à retirer:</div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{withdrawFormData.amount} MAD</div>
+                  </div>
+                  <div>
+                    <div style={{ color: colors.gray600 }}>Référence:</div>
+                    <div style={{ fontWeight: 600, fontSize: 10, color: colors.dark }}>{withdrawSimulationData?.token?.substring(0, 12)}...</div>
+                  </div>
+                </div>
+
+                {withdrawError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {withdrawError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setWithdrawStep('otp')} disabled={withdrawLoading}>
+                    ← Retour
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: (withdrawLoading || withdrawOtp.length !== 6) ? 0.6 : 1 }} 
+                    onClick={handleWithdrawConfirmation}
+                    disabled={withdrawOtp.length !== 6 || withdrawLoading}
+                  >
+                    {withdrawLoading ? '⏳ Confirmation...' : '✓ Confirmer'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {withdrawStep === 'success' && (
+              <div style={deleteConfirmStyles.successBox}>
+                <div style={deleteConfirmStyles.successIcon}>✓</div>
+                <div style={deleteConfirmStyles.successText}>Retrait réussi!</div>
+                <div style={deleteConfirmStyles.successSubtext}>
+                  {withdrawFormData.amount} MAD ont été retirés de votre wallet
                 </div>
               </div>
             )}
