@@ -433,6 +433,21 @@ export default function DashboardPage() {
   const [withdrawOtp, setWithdrawOtp] = useState('');
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const [withdrawError, setWithdrawError] = useState(null);
+
+  // 💱 State for Transfert (Wallet Transfer)
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferStep, setTransferStep] = useState('form'); // 'form' | 'otp' | 'confirmation' | 'success'
+  const [transferFormData, setTransferFormData] = useState({
+    contractId: authUser?.contractId || 'LAN230325007133701',
+    mobileNumber: authUser?.phoneNumber || '212700446631',
+    destinationPhone: '',
+    amount: '',
+    clientNote: 'Wallet Transfer',
+  });
+  const [transferSimulationData, setTransferSimulationData] = useState(null);
+  const [transferOtp, setTransferOtp] = useState('');
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState(null);
   
   const [tontines, setTontines] = useState(() => {
     // Charger les tontines créées et rejointes depuis localStorage
@@ -803,6 +818,126 @@ export default function DashboardPage() {
     }
   };
 
+  // 💱 Fonctions pour le transfert wallet (Transfer)
+  const handleTransferSimulation = async () => {
+    try {
+      setTransferLoading(true);
+      setTransferError(null);
+      
+      const response = await fetch('/api/wallet/transfer/wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...transferFormData,
+          step: 'simulation'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Simulation failed');
+      }
+
+      console.log('✅ Transfer simulation successful:', data);
+      setTransferSimulationData(data.result);
+      setTransferStep('otp');
+    } catch (error) {
+      console.error('❌ Transfer simulation error:', error);
+      setTransferError(error.message);
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
+  const handleTransferOtpGeneration = async () => {
+    try {
+      setTransferLoading(true);
+      setTransferError(null);
+
+      const response = await fetch('/api/wallet/transfer/wallet/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumber: transferFormData.mobileNumber
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'OTP generation failed');
+      }
+
+      console.log('✅ Transfer OTP generated (demo mode):', data);
+      setTransferStep('confirmation');
+    } catch (error) {
+      console.error('❌ Transfer OTP generation error:', error);
+      setTransferError(error.message);
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
+  const handleTransferConfirmation = async () => {
+    try {
+      setTransferLoading(true);
+      setTransferError(null);
+
+      if (!transferOtp || transferOtp.length !== 6) {
+        throw new Error('OTP must be 6 digits');
+      }
+
+      const response = await fetch('/api/wallet/transfer/wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: 'confirmation',
+          referenceId: transferSimulationData.referenceId,
+          mobileNumber: transferFormData.mobileNumber,
+          destinationPhone: transferFormData.destinationPhone,
+          amount: transferFormData.amount,
+          otp: transferOtp,
+          contractId: transferFormData.contractId
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Confirmation failed');
+      }
+
+      console.log('✅ Transfer confirmation successful:', data);
+      
+      // 🔄 Mettre à jour le wallet dans le store (décrémenter le montant)
+      const { updateWalletBalance } = useAuthStore.getState();
+      updateWalletBalance(-parseFloat(transferFormData.amount));
+      
+      console.log(`💰 Wallet updated: -${transferFormData.amount} MAD`);
+      
+      setTransferStep('success');
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setShowTransferModal(false);
+        setTransferStep('form');
+        setTransferSimulationData(null);
+        setTransferOtp('');
+        setTransferFormData({ 
+          ...transferFormData, 
+          destinationPhone: '',
+          amount: '' 
+        });
+      }, 2000);
+    } catch (error) {
+      console.error('❌ Transfer confirmation error:', error);
+      setTransferError(error.message);
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
   // Styles pour le modal de confirmation de suppression
   const deleteConfirmStyles = {
     overlay: {
@@ -861,7 +996,7 @@ export default function DashboardPage() {
           user={authUser}
           onDeposit={() => setShowDepositModal(true)}
           onWithdraw={() => setShowWithdrawModal(true)}
-          onTransfer={() => alert('Transfert en développement...')}
+          onTransfer={() => setShowTransferModal(true)}
         />
         <KpiGrid kpiData={kpiData} />
 
@@ -1225,6 +1360,183 @@ export default function DashboardPage() {
                 <div style={deleteConfirmStyles.successText}>Retrait réussi!</div>
                 <div style={deleteConfirmStyles.successSubtext}>
                   {withdrawFormData.amount} MAD ont été retirés de votre wallet
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 💱 Modal de Transfert (Transfer) */}
+      {showTransferModal && (
+        <div style={deleteConfirmStyles.overlay} onClick={() => !transferLoading && setShowTransferModal(false)}>
+          <div style={{ ...deleteConfirmStyles.modal, maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+            {transferStep === 'form' && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>💱 Transférer le wallet</div>
+                
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.primaryBg, borderRadius: 6 }}>
+                  ⚠️ Simulation: Vérification du destinataire et montant. OTP: Vous recevrez un code. Confirmation: Approuvez avec l'OTP.
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>N° Téléphone Destinataire</label>
+                  <input 
+                    type="text" 
+                    value={transferFormData.destinationPhone} 
+                    onChange={(e) => setTransferFormData({ ...transferFormData, destinationPhone: e.target.value })}
+                    placeholder="Ex: 212612345678"
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>Montant (MAD)</label>
+                  <input 
+                    type="number" 
+                    value={transferFormData.amount} 
+                    onChange={(e) => setTransferFormData({ ...transferFormData, amount: e.target.value })}
+                    placeholder="Ex: 500"
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                {transferError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {transferError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setShowTransferModal(false)} disabled={transferLoading}>
+                    Annuler
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: transferLoading ? 0.6 : 1 }} 
+                    onClick={handleTransferSimulation}
+                    disabled={!transferFormData.amount || !transferFormData.destinationPhone || transferLoading}
+                  >
+                    {transferLoading ? '⏳ Simulation...' : '→ Simuler'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {transferStep === 'otp' && transferSimulationData && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>📱 Génération OTP</div>
+                
+                <div style={{ background: colors.gray50, padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 9 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>À envoyer à:</div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{transferSimulationData.beneficiaryFirstName} {transferSimulationData.beneficiaryLastName}</div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant:</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{transferFormData.amount} MAD</div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Frais:</div>
+                    <div style={{ fontWeight: 600 }}>{transferSimulationData.Fees} MAD</div>
+                  </div>
+                  <div style={{ borderTop: `1px solid ${colors.gray300}`, paddingTop: 8, marginTop: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant net reçu:</div>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: colors.primary }}>{(parseFloat(transferFormData.amount) - parseFloat(transferSimulationData.Fees || 0)).toFixed(2)} MAD</div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.successBg, borderRadius: 6, textAlign: 'center' }}>
+                  ✓ Un code OTP a été envoyé à {transferFormData.mobileNumber}
+                </div>
+
+                {transferError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {transferError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setTransferStep('form')} disabled={transferLoading}>
+                    ← Retour
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: transferLoading ? 0.6 : 1 }} 
+                    onClick={handleTransferOtpGeneration}
+                    disabled={transferLoading}
+                  >
+                    {transferLoading ? '⏳ Génération...' : '→ J\'ai l\'OTP'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {transferStep === 'confirmation' && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>🔐 Confirmer le transfert</div>
+                
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.primaryBg, borderRadius: 6 }}>
+                  ⚠️ Entrez le code OTP à 6 chiffres reçu par SMS
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>Code OTP (6 chiffres)</label>
+                  <input 
+                    type="text" 
+                    value={transferOtp} 
+                    onChange={(e) => setTransferOtp(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    maxLength="6"
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px', 
+                      border: `1px solid ${colors.gray300}`, 
+                      borderRadius: 6, 
+                      fontSize: 14,
+                      fontWeight: 600,
+                      letterSpacing: '4px',
+                      textAlign: 'center',
+                    }}
+                  />
+                </div>
+
+                <div style={{ background: colors.gray50, padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 9 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant à transférer:</div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{transferFormData.amount} MAD</div>
+                  </div>
+                  <div>
+                    <div style={{ color: colors.gray600 }}>Référence:</div>
+                    <div style={{ fontWeight: 600, fontSize: 10, color: colors.dark }}>{transferSimulationData?.referenceId?.substring(0, 12)}...</div>
+                  </div>
+                </div>
+
+                {transferError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {transferError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setTransferStep('otp')} disabled={transferLoading}>
+                    ← Retour
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: (transferLoading || transferOtp.length !== 6) ? 0.6 : 1 }} 
+                    onClick={handleTransferConfirmation}
+                    disabled={transferOtp.length !== 6 || transferLoading}
+                  >
+                    {transferLoading ? '⏳ Confirmation...' : '✓ Confirmer'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {transferStep === 'success' && (
+              <div style={deleteConfirmStyles.successBox}>
+                <div style={deleteConfirmStyles.successIcon}>✓</div>
+                <div style={deleteConfirmStyles.successText}>Transfert réussi!</div>
+                <div style={deleteConfirmStyles.successSubtext}>
+                  {transferFormData.amount} MAD ont été transférés à {transferFormData.destinationPhone}
                 </div>
               </div>
             )}
