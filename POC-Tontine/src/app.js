@@ -23,6 +23,7 @@ const scoringRoutes = require('./routes/scoring.routes');
 const transactionRoutes = require('./routes/transaction.routes');
 const goalsRoutes = require('./routes/goals.routes');
 const messagesRoutes = require('./routes/messages.routes');
+const walletRoutes = require('./routes/wallet.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -521,6 +522,7 @@ app.use('/api/scoring', scoringRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/goals', goalsRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
