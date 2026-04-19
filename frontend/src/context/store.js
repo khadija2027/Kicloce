@@ -9,7 +9,33 @@ export const useAuthStore = create((set) => ({
   setUser: (user) => set({ user, isAuthenticated: !!user }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
-  logout: () => set({ user: null, isAuthenticated: false, error: null })
+  logout: () => set({ user: null, isAuthenticated: false, error: null }),
+  
+  // Update user wallet balance
+  updateWalletBalance: (amount) => set((state) => {
+    if (!state.user) return state;
+    return {
+      user: {
+        ...state.user,
+        walletBalance: (state.user.walletBalance || 0) + amount,
+        walletData: {
+          ...state.user.walletData,
+          balance: (state.user.walletData?.balance || 0) + amount
+        }
+      }
+    };
+  }),
+  
+  // Update entire user data
+  updateUser: (updates) => set((state) => {
+    if (!state.user) return state;
+    return {
+      user: {
+        ...state.user,
+        ...updates
+      }
+    };
+  })
 }));
 
 export const useTontineStore = create((set, get) => ({

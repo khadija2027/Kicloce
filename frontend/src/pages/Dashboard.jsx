@@ -492,25 +492,26 @@ export default function DashboardPage() {
       return sum + (match ? parseInt(match[1]) : 0);
     }, 0);
     
+    // Récupérer le solde du wallet
+    const walletBalance = authUser?.walletBalance || authUser?.walletData?.balance || 0;
+    let walletFormatted = '0';
+    if (walletBalance >= 1000000) {
+      walletFormatted = (walletBalance / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    } else if (walletBalance >= 1000) {
+      walletFormatted = (walletBalance / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    } else {
+      walletFormatted = String(walletBalance);
+    }
+    
     // Calculer le total épargné en parsant les montants
     const totalSaved = userTontines.reduce((sum, t) => {
       const match = t.amount.match(/(\d+(?:\s*\d+)*)/);
       return sum + (match ? parseInt(match[1].replace(/\s/g, '')) : 0);
     }, 0);
     
-    // Formater le montant total
-    let totalSavedFormatted = '0';
-    if (totalSaved >= 1000000) {
-      totalSavedFormatted = (totalSaved / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    } else if (totalSaved >= 1000) {
-      totalSavedFormatted = (totalSaved / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    } else {
-      totalSavedFormatted = String(totalSaved);
-    }
-    
     return [
+      { label: 'Wallet',       value: walletFormatted, detail: walletBalance + ' MAD', warn: false },
       { label: 'Tontines',     value: String(userTontines.length), detail: activeTontines.length + ' actives', warn: false },
-      { label: 'Total épargné',value: totalSavedFormatted, detail: '+12% ce mois', warn: false },
       { label: 'Membres',      value: String(totalMembers), detail: activeTontines.length + ' groupes', warn: false },
       { label: 'Score',        value: String(authUser?.score || 85), detail: 'Ponctualité', warn: false },
     ];
@@ -650,6 +651,13 @@ export default function DashboardPage() {
       }
 
       console.log('✅ Confirmation successful:', data);
+      
+      // 🔄 Mettre à jour le wallet dans le store (cela va trigger les KPIs)
+      const { updateWalletBalance } = useAuthStore.getState();
+      updateWalletBalance(parseFloat(depositFormData.amount));
+      
+      console.log(`💰 Wallet updated: +${depositFormData.amount} MAD`);
+      
       setDepositStep('success');
       
       // Reset after 2 seconds
