@@ -129,13 +129,25 @@ router.post('/login', (req, res) => {
   try {
     const { phoneNumber, password } = req.body;
 
+    console.log(`🔐 Login attempt with phone: ${phoneNumber}`);
+
     if (!phoneNumber || !password) {
       return res.status(400).json({ error: 'Missing phoneNumber or password' });
     }
 
-    // Trouver utilisateur
-    const user = global.database.users.find(u => u.phoneNumber === phoneNumber);
+    console.log(`📱 Looking for user with phone: ${phoneNumber}`);
+    console.log(`📊 Total users in DB: ${global.database.users.length}`);
+    console.log(`📋 Available phones: ${global.database.users.map(u => u.phoneNumber).join(', ')}`);
+
+    // Trouver utilisateur - normaliser le numéro
+    const normalizedPhone = phoneNumber.toString().trim();
+    const user = global.database.users.find(u => {
+      const dbPhone = u.phoneNumber.toString().trim();
+      return dbPhone === normalizedPhone;
+    });
+
     if (!user) {
+      console.log(`❌ User not found with phone: ${normalizedPhone}`);
       return res.status(404).json({ 
         error: `User not found with phone number: ${phoneNumber}. Please check the number or create a new account.`,
         availableUsers: global.database.users.map(u => ({
@@ -144,6 +156,8 @@ router.post('/login', (req, res) => {
         }))
       });
     }
+
+    console.log(`✅ Found user: ${user.firstName} ${user.lastName}`);
 
     // Mock: pas de vérification de mot de passe pour le moment
     // Dans un vrai cas, on comparerait les hashs de mot de passe
@@ -155,6 +169,8 @@ router.post('/login', (req, res) => {
 
     // Simuler un token de session
     const token = `JWT_MOCK_${Buffer.from(JSON.stringify({ id: user.id, ts: Date.now() })).toString('base64')}`;
+
+    console.log(`🎫 Token generated for user: ${user.id}`);
 
     return res.status(200).json({
       message: 'Login successful',
@@ -171,6 +187,7 @@ router.post('/login', (req, res) => {
     });
 
   } catch (error) {
+    console.error('❌ Login error:', error);
     return res.status(500).json({ error: error.message });
   }
 });

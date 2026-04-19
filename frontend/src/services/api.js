@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Utiliser le proxy de Vite en développement, URL directe en production
-const API_BASE_URL = import.meta.env.DEV ? '/api' : 'http://localhost:5000/api';
+// Utiliser le proxy de Vite en développement, URL relative en production (même domaine)
+const API_BASE_URL = import.meta.env.DEV ? '/api' : '/api';
 
 // Configure axios instance
 const api = axios.create({

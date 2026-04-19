@@ -32,16 +32,26 @@ const LoginPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
+      console.log('🔐 Login attempt with phone:', formData.phoneNumber);
       const { phoneNumber, password } = formData;
       const response = await authService.login({ phoneNumber, password });
+      console.log('✅ Login successful:', response.data);
       setUser(response.data.user);
       api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
       navigate('/dashboard');
     } catch (error) {
-      const errorMsg = error.response?.data?.error || 'Login failed';
+      console.error('❌ Login error:', error);
+      console.log('Error response:', error.response?.data);
+      const availableUsers = error.response?.data?.availableUsers;
+      let errorMsg = error.response?.data?.error || 'Login failed';
+      
+      if (availableUsers && availableUsers.length > 0) {
+        const usersList = availableUsers.map(u => `${u.name} (${u.phone})`).join('\n');
+        errorMsg = `${errorMsg}\n\nUtilisateurs disponibles:\n${usersList}`;
+      }
+      
       setError(errorMsg);
       alert(`Login Error: ${errorMsg}`);
-      console.error('Login error:', error);
     }
   };
 
