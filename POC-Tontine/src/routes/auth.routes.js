@@ -136,7 +136,13 @@ router.post('/login', (req, res) => {
     // Trouver utilisateur
     const user = global.database.users.find(u => u.phoneNumber === phoneNumber);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ 
+        error: `User not found with phone number: ${phoneNumber}. Please check the number or create a new account.`,
+        availableUsers: global.database.users.map(u => ({
+          name: `${u.firstName} ${u.lastName}`,
+          phone: u.phoneNumber
+        }))
+      });
     }
 
     // Mock: pas de vérification de mot de passe pour le moment

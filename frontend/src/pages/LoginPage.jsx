@@ -134,6 +134,26 @@ const LoginPage = () => {
               <input className="finput" name="password" type="password" value={formData.password || ''} onChange={handleInputChange} />
             </div>
             <button className="btn-auth" type="submit">Se connecter</button>
+            
+            {/* Test Users Info */}
+            <div style={{ marginTop: '24px', padding: '12px', backgroundColor: '#f0f9ff', borderRadius: '8px', fontSize: '12px', lineHeight: '1.6' }}>
+              <div style={{ fontWeight: '600', marginBottom: '8px', color: '#1e40af' }}>👤 Utilisateurs de test:</div>
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Fatima El Amrani</strong><br/>
+                📱 212700446631<br/>
+                🔐 Tout mot de passe
+              </div>
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Youssef Bennani</strong><br/>
+                📱 212612345678<br/>
+                🔐 Tout mot de passe
+              </div>
+              <div>
+                <strong>Nadia Aziz</strong><br/>
+                📱 212722334455<br/>
+                🔐 Tout mot de passe
+              </div>
+            </div>
           </form>
         ) : (
           <form onSubmit={handleRegister}>
