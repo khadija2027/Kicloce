@@ -508,24 +508,6 @@ function initializeDatabase() {
 // Initialize database with sample data
 initializeDatabase();
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.status(200).json({
-    message: '🎯 POC Tontine Digitale - CIH Wallet Management Kit',
-    description: 'API pour la numérisation des tontines marocaines',
-    status: 'running ✅',
-    quickStart: {
-      health: 'GET /health',
-      documentation: 'GET /api',
-      registerUser: 'POST /api/auth/register',
-      listUsers: 'GET /api/auth/users',
-      createTontine: 'POST /api/tontines/create'
-    },
-    documentation: 'Pour plus d\'informations, consultez /api',
-    demoScript: 'npm run demo après npm run seed'
-  });
-});
-
 // API Routes
 app.use(express.json());
 
