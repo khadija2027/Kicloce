@@ -93,7 +93,7 @@ function TontineFilter({ selectedFilter = 'all', onFilterChange }) {
   );
 }
 
-function WalletCard({ user }) {
+function WalletCard({ user, onDeposit, onWithdraw, onTransfer }) {
   const s = {
     card: {
       background: colors.primary,
@@ -112,6 +112,7 @@ function WalletCard({ user }) {
       borderRadius: 6, color: colors.white,
       fontSize: 7, fontWeight: 600, textAlign: 'center',
       cursor: 'pointer',
+      transition: 'all 0.2s',
     },
   };
   
@@ -123,9 +124,9 @@ function WalletCard({ user }) {
       <div style={s.amount}>{balance.toLocaleString()} MAD</div>
       <div style={s.sub}>Prochain versement: 1 500 MAD — Vendredi</div>
       <div style={s.btns}>
-        {['↑ Déposer','↓ Retirer','⇄ Transférer'].map((b) => (
-          <div key={b} style={s.btn}>{b}</div>
-        ))}
+        <button style={s.btn} onClick={onDeposit}>↑ Déposer</button>
+        <button style={s.btn} onClick={onWithdraw}>↓ Retirer</button>
+        <button style={s.btn} onClick={onTransfer}>⇄ Transférer</button>
       </div>
     </div>
   );
@@ -398,11 +399,27 @@ function CreateTontineForm({ onClose, onSubmit }) {
  */
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuthStore();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [tontineToDelete, setTontineToDelete] = useState(null);
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  
+  // 💳 Estados del Depósito (Wallet Deposit)
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [depositStep, setDepositStep] = useState('form'); // 'form' | 'simulation' | 'confirmation' | 'success'
+  const [depositFormData, setDepositFormData] = useState({
+    contractId: authUser?.contractId || 'LAN230325007133701',
+    level: '2',
+    phoneNumber: authUser?.phoneNumber || '212700446631',
+    amount: '',
+    fees: '0',
+  });
+  const [simulationData, setSimulationData] = useState(null);
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositError, setDepositError] = useState(null);
+  
   const [tontines, setTontines] = useState(() => {
     // Charger les tontines créées et rejointes depuis localStorage
     const savedCreated = localStorage.getItem('createdTontines');
@@ -581,6 +598,78 @@ export default function DashboardPage() {
     secA:   { fontSize: 9,  color: colors.primary, cursor: 'pointer' },
   };
 
+  // 💳 Fonctions pour le dépôt wallet (Cash IN)
+  const handleDepositSimulation = async () => {
+    try {
+      setDepositLoading(true);
+      setDepositError(null);
+      
+      const response = await fetch('/api/wallet/cash/in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...depositFormData,
+          step: 'simulation'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Simulation failed');
+      }
+
+      console.log('✅ Simulation successful:', data);
+      setSimulationData(data.result);
+      setDepositStep('confirmation');
+    } catch (error) {
+      console.error('❌ Simulation error:', error);
+      setDepositError(error.message);
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
+  const handleDepositConfirmation = async () => {
+    try {
+      setDepositLoading(true);
+      setDepositError(null);
+
+      const response = await fetch('/api/wallet/cash/in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: simulationData.token,
+          amount: depositFormData.amount,
+          fees: depositFormData.fees,
+          step: 'confirmation'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Confirmation failed');
+      }
+
+      console.log('✅ Confirmation successful:', data);
+      setDepositStep('success');
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setShowDepositModal(false);
+        setDepositStep('form');
+        setSimulationData(null);
+        setDepositFormData({ ...depositFormData, amount: '' });
+      }, 2000);
+    } catch (error) {
+      console.error('❌ Confirmation error:', error);
+      setDepositError(error.message);
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
   // Styles pour le modal de confirmation de suppression
   const deleteConfirmStyles = {
     overlay: {
@@ -635,7 +724,12 @@ export default function DashboardPage() {
       <TopBar showNotif avatar={getAvatarInitials(authUser)} />
 
       <div style={s.scroll}>
-        <WalletCard user={authUser} />
+        <WalletCard 
+          user={authUser}
+          onDeposit={() => setShowDepositModal(true)}
+          onWithdraw={() => alert('Retrait en développement...')}
+          onTransfer={() => alert('Transfert en développement...')}
+        />
         <KpiGrid kpiData={kpiData} />
 
         <div style={s.secHd}>
@@ -699,6 +793,123 @@ export default function DashboardPage() {
                 <div style={deleteConfirmStyles.successText}>Demande supprimée!</div>
                 <div style={deleteConfirmStyles.successSubtext}>
                   La demande a été annulée
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 💳 Modal de Dépôt (Cash IN) */}
+      {showDepositModal && (
+        <div style={deleteConfirmStyles.overlay} onClick={() => !depositLoading && setShowDepositModal(false)}>
+          <div style={{ ...deleteConfirmStyles.modal, maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+            {depositStep === 'form' && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>💳 Charger mon wallet</div>
+                
+                <div style={{ fontSize: 9, color: colors.gray600, marginBottom: 12, padding: '8px 12px', background: colors.primaryBg, borderRadius: 6 }}>
+                  ⚠️ Simulation: Entrez les informations et validez. Confirmation: Approuvez la transaction.
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>Montant (MAD)</label>
+                  <input 
+                    type="number" 
+                    value={depositFormData.amount} 
+                    onChange={(e) => setDepositFormData({ ...depositFormData, amount: e.target.value })}
+                    placeholder="Ex: 500"
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>N° Téléphone</label>
+                  <input 
+                    type="text" 
+                    value={depositFormData.phoneNumber} 
+                    onChange={(e) => setDepositFormData({ ...depositFormData, phoneNumber: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: colors.dark, display: 'block', marginBottom: 4 }}>ID Contrat</label>
+                  <input 
+                    type="text" 
+                    value={depositFormData.contractId} 
+                    onChange={(e) => setDepositFormData({ ...depositFormData, contractId: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: `1px solid ${colors.gray300}`, borderRadius: 6, fontSize: 10 }}
+                  />
+                </div>
+
+                {depositError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {depositError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setShowDepositModal(false)} disabled={depositLoading}>
+                    Annuler
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: depositLoading ? 0.6 : 1 }} 
+                    onClick={handleDepositSimulation}
+                    disabled={!depositFormData.amount || depositLoading}
+                  >
+                    {depositLoading ? '⏳ Simulation...' : '→ Simuler'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {depositStep === 'confirmation' && simulationData && (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>✅ Confirmer le dépôt</div>
+                
+                <div style={{ background: colors.gray50, padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 9 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Montant:</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{depositFormData.amount} MAD</div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Frais:</div>
+                    <div style={{ fontWeight: 600 }}>{simulationData.Fees || '0'} MAD</div>
+                  </div>
+                  <div style={{ borderTop: `1px solid ${colors.gray300}`, paddingTop: 8, marginTop: 8 }}>
+                    <div style={{ color: colors.gray600 }}>Total à prélever:</div>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: colors.primary }}>{simulationData.amountToCollect || depositFormData.amount} MAD</div>
+                  </div>
+                </div>
+
+                {depositError && (
+                  <div style={{ fontSize: 9, color: colors.danger, marginBottom: 12, padding: '8px', background: colors.dangerBg, borderRadius: 6 }}>
+                    ❌ {depositError}
+                  </div>
+                )}
+
+                <div style={deleteConfirmStyles.btnGroup}>
+                  <button style={deleteConfirmStyles.btn(false)} onClick={() => setDepositStep('form')} disabled={depositLoading}>
+                    ← Retour
+                  </button>
+                  <button 
+                    style={{ ...deleteConfirmStyles.btn(true), opacity: depositLoading ? 0.6 : 1 }} 
+                    onClick={handleDepositConfirmation}
+                    disabled={depositLoading}
+                  >
+                    {depositLoading ? '⏳ Confirmation...' : '✓ Confirmer'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {depositStep === 'success' && (
+              <div style={deleteConfirmStyles.successBox}>
+                <div style={deleteConfirmStyles.successIcon}>✓</div>
+                <div style={deleteConfirmStyles.successText}>Dépôt réussi!</div>
+                <div style={deleteConfirmStyles.successSubtext}>
+                  {depositFormData.amount} MAD ont été ajoutés à votre wallet
                 </div>
               </div>
             )}
