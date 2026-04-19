@@ -31,7 +31,7 @@ router.post('/cash/in', (req, res) => {
 
       // Mock simulation response
       const simulationToken = `${uuidv4().substring(0, 16).toUpperCase()}`;
-      const calculatedFees = parseFloat(amount) * 0.25;
+      const calculatedFees = parseFloat(amount) * 0.025;
       const amountToCollect = parseFloat(amount) + calculatedFees;
 
       const simulationResponse = {
@@ -251,7 +251,7 @@ router.post('/cash/out', (req, res) => {
 
       // Mock simulation response
       const simulationToken = `${uuidv4().substring(0, 16).toUpperCase()}`;
-      const calculatedFees = parseFloat(amount) * 0.25;
+      const calculatedFees = parseFloat(amount) * 0.025;
       const maxCashOut = Math.min(userBalance - 100, 5000); // Max 5000 MAD
 
       const simulationResponse = {
