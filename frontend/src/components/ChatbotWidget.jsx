@@ -1,6 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { colors } from '../theme';
 
+// ─── API Configuration ───────────────────────────────────────────────────────
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || 'sk-placeholder';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+const SYSTEM_PROMPT = `Tu es Tontine IA, un assistant financier expert en tontines et finances. Tu as pour mission d'aider les utilisateurs marocains à:
+- Comprendre le système des tontines (épargne collective, versements réguliers, etc.)
+- Gérer leurs wallets et transactions
+- Atteindre leurs objectifs financiers
+- Optimiser leurs finances personnelles
+- Suivre leurs tontines et versements
+
+Ton ton est amical, encourageant et pédagogue. Tu donnes des conseils pratiques et adaptés au contexte marocain (montants en MAD, horaires locaux, pratiques communautaires).
+
+Informations sur l'utilisateur:
+- Plateforme: Tontine Digitale (application Web)
+- Fonctionnalités disponibles: Wallet, Tontines, Objectifs, Messages, Formation
+- Devise: MAD (Dirham marocain)
+
+Tu répondis toujours en français et tu fournis des réponses concises mais utiles (max 150 mots).`;
+
 // ─── Messages initiaux ───────────────────────────────────────────────────────
 const INITIAL_MESSAGES = [
   {
@@ -10,46 +30,40 @@ const INITIAL_MESSAGES = [
   },
 ];
 
-// Réponses automatiques selon mots-clés
-const AUTO_REPLIES = [
-  {
-    keys: ['tontine','versement','groupe'],
-    reply: "Pour vos tontines actives, votre prochain versement est de **1 500 MAD** prévu **vendredi**. Souhaitez-vous que je vous envoie un rappel ? 📅",
-  },
-  {
-    keys: ['solde','wallet','argent','compte'],
-    reply: "Votre solde wallet actuel est de **3 250 MAD** 💰\n\nVous pouvez :\n• Déposer des fonds\n• Retirer vers votre compte bancaire\n• Transférer à un membre",
-  },
-  {
-    keys: ['objectif','épargne','épargner','but'],
-    reply: "Vos objectifs en cours 🎯\n\n• Achat Voiture : 65% (52K/80K MAD)\n• Voyage famille : 74% (18.5K/25K MAD)\n• Formation pro : 27%\n\nVotre taux de réalisation global est de **73%** — excellent rythme !",
-  },
-  {
-    keys: ['score','note','évaluation','réputation'],
-    reply: "Votre score Tontine+ est de **780 / 1 000** ⭐\n\nCatégorie : **Très bon**\n\nPour améliorer votre score :\n• Payer vos versements à temps\n• Rejoindre plus de groupes actifs\n• Compléter votre profil",
-  },
-  {
-    keys: ['conseil','aide','comment','astuce'],
-    reply: "Voici mes 3 conseils du jour 💡\n\n1. **Automatisez** vos versements pour ne jamais rater une échéance\n2. **Diversifiez** en rejoignant des tontines de montants différents\n3. **Épargnez** au moins 20% du pot reçu à chaque tour",
-  },
-  {
-    keys: ['bonjour','salut','bonsoir','hello','hi'],
-    reply: "Bonjour ! 😊 Comment puis-je vous aider aujourd'hui ?\n\nVous pouvez me poser des questions sur vos tontines, votre épargne, vos objectifs ou demander des conseils financiers.",
-  },
-  {
-    keys: ['merci','super','parfait','génial','top'],
-    reply: "Avec plaisir ! 🙏 N'hésitez pas si vous avez d'autres questions. Je suis là pour vous aider à atteindre vos objectifs financiers ! 💪",
-  },
-];
+// ─── Groq API Call ───────────────────────────────────────────────────────────
+async function callGroqAPI(userMessage, conversationHistory = []) {
+  try {
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...conversationHistory,
+      { role: 'user', content: userMessage }
+    ];
 
-const DEFAULT_REPLY = "Je comprends votre question. Laissez-moi analyser votre situation...\n\nPour des conseils personnalisés, je vous recommande de consulter la section **Formation** ou de contacter votre groupe via **Messages**. Puis-je vous aider avec autre chose ? 😊";
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'mixtral-8x7b-32768',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 300,
+      }),
+    });
 
-function getAutoReply(text) {
-  const lower = text.toLowerCase();
-  for (const { keys, reply } of AUTO_REPLIES) {
-    if (keys.some((k) => lower.includes(k))) return reply;
+    if (!response.ok) {
+      console.error('Groq API Error:', await response.text());
+      throw new Error('API call failed');
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Error calling Groq API:', error);
+    return "Je comprends votre question. Laissez-moi analyser votre situation...\n\nPour des conseils personnalisés en ce moment, je vous recommande de consulter la section **Formation** ou de contacter votre groupe via **Messages**. 😊";
   }
-  return DEFAULT_REPLY;
 }
 
 // Rendu simple du markdown basique (gras uniquement)
@@ -81,7 +95,7 @@ function ChatWindow({ onClose }) {
     }
   }, [messages, typing]);
 
-  function send() {
+  async function send() {
     const text = input.trim();
     if (!text) return;
 
@@ -90,19 +104,38 @@ function ChatWindow({ onClose }) {
       text,
       time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
     };
+    
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setTyping(true);
 
-    setTimeout(() => {
-      const reply = getAutoReply(text);
+    try {
+      // Préparer l'historique de conversation
+      const conversationHistory = messages
+        .filter(m => m.id !== 1) // Exclure le premier message initial
+        .map(m => ({
+          role: m.me ? 'user' : 'assistant',
+          content: m.text
+        }));
+
+      // Appeler l'API Groq
+      const aiReply = await callGroqAPI(text, conversationHistory);
+      
       setTyping(false);
       setMessages((prev) => [...prev, {
         id: Date.now() + 1, me: false,
-        text: reply,
+        text: aiReply,
         time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
       }]);
-    }, 1200 + Math.random() * 600);
+    } catch (error) {
+      console.error('Error generating reply:', error);
+      setTyping(false);
+      setMessages((prev) => [...prev, {
+        id: Date.now() + 1, me: false,
+        text: "Désolé, je rencontre une connexion temporaire. Pourriez-vous réessayer ? 😊",
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    }
   }
 
   const s = {
