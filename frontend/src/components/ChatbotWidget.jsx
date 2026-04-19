@@ -5,6 +5,15 @@ import { colors } from '../theme';
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || 'sk-placeholder';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
+// Vérifier si la clé API est disponible et valide
+const GROQ_AVAILABLE = GROQ_API_KEY && GROQ_API_KEY.startsWith('gsk_');
+
+// Log au chargement du module
+if (!GROQ_AVAILABLE && typeof window !== 'undefined') {
+  console.warn('[Chatbot] ⚠️ Groq API Key not configured');
+  console.warn('[Chatbot] To enable AI responses: Set VITE_GROQ_API_KEY=gsk_... in .env.local');
+}
+
 const SYSTEM_PROMPT = `Tu es Tontine IA, un assistant financier expert en tontines et finances. Tu as pour mission d'aider les utilisateurs marocains à:
 - Comprendre le système des tontines (épargne collective, versements réguliers, etc.)
 - Gérer leurs wallets et transactions
@@ -30,8 +39,62 @@ const INITIAL_MESSAGES = [
   },
 ];
 
+// ─── Fallback Responses (quand l'API n'est pas disponible) ──────────────────
+const AUTO_REPLIES = [
+  {
+    keys: ['tontine','versement','groupe','adheren','rejoind','créer'],
+    reply: "Pour vos tontines actives, votre prochain versement est de **1 500 MAD** prévu **vendredi**. Souhaitez-vous que je vous envoie un rappel ? 📅",
+  },
+  {
+    keys: ['solde','wallet','argent','compte','balance','retrait'],
+    reply: "Votre solde wallet actuel est de **15 750 MAD** 💰\n\nVous pouvez :\n• Déposer des fonds (↑ Déposer)\n• Retirer vers votre compte bancaire (↓ Retirer)\n• Transférer à un membre (⇄ Transférer)",
+  },
+  {
+    keys: ['objectif','épargne','épargner','but','savings','goal','acheter'],
+    reply: "Vos objectifs en cours 🎯\n\n• Achat Voiture : 65% (52K/80K MAD)\n• Voyage famille : 74% (18.5K/25K MAD)\n• Formation pro : 27%\n\nVotre taux de réalisation global est de **73%** — excellent rythme !",
+  },
+  {
+    keys: ['score','note','évaluation','réputation','rating'],
+    reply: "Votre score Tontine+ est de **780 / 1 000** ⭐\n\nCatégorie : **Très bon**\n\nPour améliorer votre score :\n• Payer vos versements à temps\n• Rejoindre plus de groupes actifs\n• Compléter votre profil",
+  },
+  {
+    keys: ['conseil','aide','comment','astuce','fee','frais','charges'],
+    reply: "Voici mes 3 conseils du jour 💡\n\n1. **Automatisez** vos versements pour ne jamais rater une échéance\n2. **Diversifiez** en rejoignant des tontines de montants différents\n3. **Épargnez** au moins 20% du pot reçu à chaque tour",
+  },
+  {
+    keys: ['bonjour','salut','bonsoir','hello','hi','ça va','comment'],
+    reply: "Bonjour ! 😊 Comment puis-je vous aider aujourd'hui ?\n\nVous pouvez me poser des questions sur vos tontines, votre épargne, vos objectifs ou demander des conseils financiers.",
+  },
+  {
+    keys: ['merci','super','parfait','génial','top','thanks','cool'],
+    reply: "Avec plaisir ! 🙏 N'hésitez pas si vous avez d'autres questions. Je suis là pour vous aider à atteindre vos objectifs financiers ! 💪",
+  },
+  {
+    keys: ['transfert','envoyer','payer','virement','send','money'],
+    reply: "Pour transférer de l'argent à un membre : 📤\n\n1. Cliquez sur **⇄ Transférer** dans votre wallet\n2. Entrez le numéro téléphone du destinataire\n3. Saisissez le montant\n4. Confirmez avec l'OTP\n\nLes frais de transfert sont de **2.5%**.",
+  },
+];
+
+const DEFAULT_REPLY = "C'est une bonne question ! 🤔\n\nPour vous fournir le meilleur conseil, pourriez-vous préciser votre question ?\n\nPar exemple :\n• Comment fonctionne une tontine ?\n• Quel est mon solde wallet ?\n• Comment augmenter mon épargne ?";
+
+function getFallbackReply(userMessage) {
+  const lower = userMessage.toLowerCase();
+  for (const { keys, reply } of AUTO_REPLIES) {
+    if (keys.some((k) => lower.includes(k))) {
+      return reply;
+    }
+  }
+  return DEFAULT_REPLY;
+}
+
 // ─── Groq API Call ───────────────────────────────────────────────────────────
 async function callGroqAPI(userMessage, conversationHistory = []) {
+  // Si l'API n'est pas disponible, utiliser les réponses prédéfinies
+  if (!GROQ_AVAILABLE) {
+    console.log('[Chatbot] Using fallback response (Groq API not configured)');
+    return getFallbackReply(userMessage);
+  }
+
   try {
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -39,6 +102,7 @@ async function callGroqAPI(userMessage, conversationHistory = []) {
       { role: 'user', content: userMessage }
     ];
 
+    console.log('[Chatbot] Calling Groq API...');
     const response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
@@ -54,15 +118,19 @@ async function callGroqAPI(userMessage, conversationHistory = []) {
     });
 
     if (!response.ok) {
-      console.error('Groq API Error:', await response.text());
-      throw new Error('API call failed');
+      const errorText = await response.text();
+      console.error('[Chatbot] API Error:', response.status, errorText);
+      throw new Error(`API Error: ${response.status}`);
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    const aiResponse = data.choices[0]?.message?.content;
+    console.log('[Chatbot] ✅ Got API response');
+    return aiResponse || getFallbackReply(userMessage);
   } catch (error) {
-    console.error('Error calling Groq API:', error);
-    return "Je comprends votre question. Laissez-moi analyser votre situation...\n\nPour des conseils personnalisés en ce moment, je vous recommande de consulter la section **Formation** ou de contacter votre groupe via **Messages**. 😊";
+    console.error('[Chatbot] Failed to call Groq API:', error.message);
+    console.log('[Chatbot] Using fallback response');
+    return getFallbackReply(userMessage);
   }
 }
 
