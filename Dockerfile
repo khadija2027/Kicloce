@@ -5,20 +5,22 @@ FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
 
 # Copy frontend package files
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci --omit=dev
 
 # Copy frontend source
 COPY frontend/src ./src
-COPY frontend/public ./public
 COPY frontend/index.html ./
 COPY frontend/vite.config.js ./
 COPY frontend/tailwind.config.js ./
 COPY frontend/postcss.config.js ./
 COPY frontend/tsconfig.json ./
 COPY frontend/tsconfig.node.json ./
+
+# Copy public directory with at least placeholder
+COPY frontend/public ./public/
 
 # Build frontend
 RUN npm run build
@@ -29,9 +31,9 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Install backend dependencies
-COPY POC-Tontine/package.json POC-Tontine/package-lock.json ./
+COPY POC-Tontine/package*.json ./
 
-RUN npm install --production
+RUN npm ci --omit=dev
 
 # Copy backend source
 COPY POC-Tontine/src ./src
