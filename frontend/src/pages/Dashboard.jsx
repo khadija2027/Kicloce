@@ -467,9 +467,6 @@ export default function DashboardPage() {
     setTontines(allTontines);
   }, [location]);
 
-  // Récupérer l'utilisateur actuel depuis le store
-  const authUser = useAuthStore(state => state.user);
-  
   // Calculer l'avatar (initiales du prénom + nom)
   const getAvatarInitials = (user) => {
     if (!user) return 'FA';
